@@ -15,13 +15,14 @@ gpio_config_t io_conf = {
 void app_main()
 {
     gpio_config(&io_conf);
-    gpio_set_level(GPIO_NUM_35, 1);
     
     while(1) 
     {
-
-
-        ESP_LOGI(TAG, "Hello World!");
+        gpio_set_level(GPIO_NUM_35, 1);
+        ESP_LOGI(TAG, "ON!");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        gpio_set_level(GPIO_NUM_35, 0);
+        ESP_LOGI(TAG, "OFF!");
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
