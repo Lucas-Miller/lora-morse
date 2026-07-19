@@ -3,6 +3,9 @@
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "esp_lcd_io_i2c.h"
+#include "esp_lcd_panel_ssd1306.h"
+#include "esp_lcd_panel_ops.h"
+
 
 static const char *TAG = "main";
 
@@ -23,7 +26,7 @@ i2c_master_bus_config_t i2c_conf = {
     .flags.enable_internal_pullup = true,
 };
 
-const int LCD_CLOCK_SPEED_HZ = 40000;
+const int LCD_CLOCK_SPEED_HZ = 400000;
 const int LCD_COMMAND_BIT_WIDTH = 8;
 const int LCD_PARAMETER_BIT_WIDTH = 8; 
 const int LCD_CONTRL_PHASE_BYTES = 1;
@@ -36,6 +39,18 @@ esp_lcd_panel_io_i2c_config_t lcd_io_conf = {
     .lcd_param_bits = LCD_PARAMETER_BIT_WIDTH,
     .control_phase_bytes = LCD_CONTRL_PHASE_BYTES,
     .dc_bit_offset = LCD_DC_BIT_OFFSET,
+};
+
+esp_lcd_panel_handle_t panel_handle = NULL;
+
+esp_lcd_panel_ssd1306_config_t ssd1306_config = {
+    .height = 64,
+};
+
+esp_lcd_panel_dev_config_t panel_config = {
+    .bits_per_pixel = 1,
+    .reset_gpio_num = GPIO_NUM_21,
+    .vendor_config = &ssd1306_config,
 };
 
 void app_main()
@@ -57,7 +72,19 @@ void app_main()
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c(bus_handle, &lcd_io_conf, &lcd_io_handle));
     ESP_LOGI(TAG, "LCD IO DEVICE ALLOCATED!");
 
-    // Wrap i2c bus in a panel-io layer
+    ESP_ERROR_CHECK(esp_lcd_new_panel_ssd1306(lcd_io_handle, &panel_config, &panel_handle));
+    ESP_LOGI(TAG, "NEW LCD PANEL CREATED!");
+
+    esp_lcd_panel_reset(panel_handle);
+    esp_lcd_panel_init(panel_handle);
+    esp_lcd_panel_disp_on_off(panel_handle, true);
+    
+    static uint8_t full[128 * 64 / 8];   // 1024 bytes
+    memset(full, 0xFF, sizeof(full));
+    ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(panel_handle, 0, 0, 128, 64, full));
+
+
+
 
 
 
