@@ -5,6 +5,8 @@
 #include "esp_lcd_io_i2c.h"
 #include "esp_lcd_panel_ssd1306.h"
 #include "esp_lcd_panel_ops.h"
+#include "lvgl.h"
+#include "esp_lvgl_port.h"
 
 
 static const char *TAG = "main";
@@ -53,8 +55,14 @@ esp_lcd_panel_dev_config_t panel_config = {
     .vendor_config = &ssd1306_config,
 };
 
+const lvgl_port_cfg_t lvgl_conf = ESP_LVGL_PORT_INIT_CONFIG();
+
+
 void app_main()
 {
+
+
+
     gpio_config(&io_conf);
     // Set up Vext
     gpio_set_level(GPIO_NUM_36, 0);
@@ -78,14 +86,32 @@ void app_main()
     esp_lcd_panel_reset(panel_handle);
     esp_lcd_panel_init(panel_handle);
     esp_lcd_panel_disp_on_off(panel_handle, true);
+
+    ESP_ERROR_CHECK(lvgl_port_init(&lvgl_conf));
+
+
+    const lvgl_port_display_cfg_t display_conf = {
+        .io_handle = lcd_io_handle,
+        .panel_handle = panel_handle,
+        .buffer_size = 128*64,
+        .hres = 128,
+        .vres = 64,
+        .monochrome = true,
+    };
     
-    static uint8_t full[128 * 64 / 8];   // 1024 bytes
-    memset(full, 0xFF, sizeof(full));
-    ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(panel_handle, 0, 0, 128, 64, full));
+    lv_display_t *disp = lvgl_port_add_disp(&display_conf);
 
+    if (disp == NULL) {
+        ESP_LOGE(TAG, "failed to add LVGL display");
+        return;
+    }
+    
 
-
-
+    lvgl_port_lock(0);
+    lv_obj_t *label = lv_label_create(lv_screen_active());
+    lv_label_set_text(label, "hello");
+    lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+    lvgl_port_unlock();
 
 
     vTaskDelay(pdMS_TO_TICKS(1000));
