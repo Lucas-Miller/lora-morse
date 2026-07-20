@@ -19,6 +19,14 @@ gpio_config_t io_conf = {
     .intr_type = GPIO_INTR_DISABLE,
 };
 
+gpio_config_t button_conf = {
+    .pin_bit_mask = (1ULL << 47),
+    .mode = GPIO_MODE_INPUT,
+    .pull_up_en = GPIO_PULLUP_ENABLE,
+    .pull_down_en = GPIO_PULLDOWN_DISABLE,
+    .intr_type = GPIO_INTR_DISABLE,
+};
+
 i2c_master_bus_config_t i2c_conf = {
     .i2c_port = -1,
     .sda_io_num = 17,
@@ -64,6 +72,7 @@ void app_main()
 
 
     gpio_config(&io_conf);
+    gpio_config(&button_conf);
     // Set up Vext
     gpio_set_level(GPIO_NUM_36, 0);
     gpio_set_level(GPIO_NUM_21, 0);
@@ -116,15 +125,19 @@ void app_main()
 
     vTaskDelay(pdMS_TO_TICKS(1000));
     
+    int last = 1;
     while(1) 
     {
 
-        gpio_set_level(GPIO_NUM_35, 1);
-        ESP_LOGI(TAG, "ON!");
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        gpio_set_level(GPIO_NUM_35, 0);
-        ESP_LOGI(TAG, "OFF!");
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        int now = gpio_get_level(GPIO_NUM_47);
+        
+        if(now != last) {
+            ESP_LOGI(TAG, "%s", now == 0 ? "PRESSED" : "RELEASED");
+            last = now;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(10));
+
     }
 
 }
