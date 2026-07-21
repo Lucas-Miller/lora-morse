@@ -75,7 +75,8 @@ const lvgl_port_cfg_t lvgl_conf = ESP_LVGL_PORT_INIT_CONFIG();
 void button_task(void *arg) {
     int last_reported = 1;
     int evt;
-    const TickType_t SETTLE = pdMS_TO_TICKS(8);
+    const TickType_t SETTLE = pdMS_TO_TICKS(20);
+    int64_t press_start = 0;
 
     while (1) {
         xQueueReceive(button_queue, &evt, portMAX_DELAY);
@@ -87,7 +88,23 @@ void button_task(void *arg) {
         int level = gpio_get_level(GPIO_NUM_47);
         if (level != last_reported) {
             last_reported = level;
-            ESP_LOGI(TAG, "%s", level == 0 ? "PRESSED" : "RELEASED");
+
+
+            if(level == 0) {
+                press_start = esp_timer_get_time();
+                ESP_LOGI(TAG, "%s", "PRESSED");    
+            } else {
+                ESP_LOGI(TAG, "%s", "RELEASED");
+                int64_t now = esp_timer_get_time();
+                int64_t hold_duration = now - press_start;
+
+                if(hold_duration > 300000) {
+                    ESP_LOGI(TAG, "%s", "_");
+                } else {
+                    ESP_LOGI(TAG, "%s", ".");
+                }
+            }
+            
         }
     }
 }
