@@ -7,6 +7,11 @@
 #include "esp_lcd_panel_ops.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
+#include "freertos/queue.h"
+#include "esp_timer.h"
+
+
+QueueHandle_t button_queue;
 
 
 static const char *TAG = "main";
@@ -24,7 +29,7 @@ gpio_config_t button_conf = {
     .mode = GPIO_MODE_INPUT,
     .pull_up_en = GPIO_PULLUP_ENABLE,
     .pull_down_en = GPIO_PULLDOWN_DISABLE,
-    .intr_type = GPIO_INTR_DISABLE,
+    .intr_type = GPIO_INTR_ANYEDGE,
 };
 
 i2c_master_bus_config_t i2c_conf = {
@@ -66,13 +71,51 @@ esp_lcd_panel_dev_config_t panel_config = {
 const lvgl_port_cfg_t lvgl_conf = ESP_LVGL_PORT_INIT_CONFIG();
 
 
+
+void button_task(void *arg) {
+    int last_reported = 1;
+    int evt;
+    const TickType_t SETTLE = pdMS_TO_TICKS(8);
+
+    while (1) {
+        xQueueReceive(button_queue, &evt, portMAX_DELAY);
+
+        while (xQueueReceive(button_queue, &evt, SETTLE) == pdTRUE) {
+            // still bouncing, drain and keep waiting
+        }
+
+        int level = gpio_get_level(GPIO_NUM_47);
+        if (level != last_reported) {
+            last_reported = level;
+            ESP_LOGI(TAG, "%s", level == 0 ? "PRESSED" : "RELEASED");
+        }
+    }
+}
+
+
+void IRAM_ATTR handle_button_press(void *arg) {
+    int ping = 1;
+    BaseType_t hpw = pdFALSE;
+    xQueueSendFromISR(button_queue, &ping, &hpw);
+    if (hpw) portYIELD_FROM_ISR();
+}
+
+
 void app_main()
 {
 
 
 
     gpio_config(&io_conf);
+    
     gpio_config(&button_conf);
+    gpio_install_isr_service(0);
+    button_queue = xQueueCreate(10, sizeof(int));
+    xTaskCreate(button_task, "button_task", 4096, NULL, 5, NULL);
+    gpio_isr_handler_add(GPIO_NUM_47, &handle_button_press, NULL);
+
+
+
     // Set up Vext
     gpio_set_level(GPIO_NUM_36, 0);
     gpio_set_level(GPIO_NUM_21, 0);
@@ -125,19 +168,19 @@ void app_main()
 
     vTaskDelay(pdMS_TO_TICKS(1000));
     
-    int last = 1;
-    while(1) 
-    {
+    // int last = 1;
+    // while(1) 
+    // {
 
-        int now = gpio_get_level(GPIO_NUM_47);
+    //     int now = gpio_get_level(GPIO_NUM_47);
         
-        if(now != last) {
-            ESP_LOGI(TAG, "%s", now == 0 ? "PRESSED" : "RELEASED");
-            last = now;
-        }
+    //     if(now != last) {
+    //         ESP_LOGI(TAG, "%s", now == 0 ? "PRESSED" : "RELEASED");
+    //         last = now;
+    //     }
 
-        vTaskDelay(pdMS_TO_TICKS(10));
+    //     vTaskDelay(pdMS_TO_TICKS(10));
 
-    }
+    // }
 
 }
