@@ -11,6 +11,13 @@
 #include "esp_timer.h"
 
 
+// LoRa packets can be up to 255 bits so we can limit our msg size to that
+#define MSG_MAX_LEN 256
+
+char message[MSG_MAX_LEN];
+size_t msg_len = 0;
+
+
 QueueHandle_t button_queue;
 
 
@@ -98,12 +105,22 @@ void button_task(void *arg) {
                 int64_t now = esp_timer_get_time();
                 int64_t hold_duration = now - press_start;
 
-                if(hold_duration > 300000) {
-                    ESP_LOGI(TAG, "%s", "_");
+                if(msg_len < MSG_MAX_LEN - 1) {
+                    if(hold_duration > 300000) {
+                        message[msg_len++] = '_';
+                    } else {
+                        message[msg_len++] = '.';
+                    }
                 } else {
-                    ESP_LOGI(TAG, "%s", ".");
+                    for(int i = 0; i < MSG_MAX_LEN; ++i) {
+                        message[i] = '\0';
+                    }
+                    msg_len = 0;
+                    // Force Send Message as we have hit the limit
                 }
             }
+
+            ESP_LOGI(TAG, "%s" ,message);
             
         }
     }
