@@ -83,14 +83,32 @@ void button_task(void *arg) {
     int last_reported = 1;
     int evt;
     const TickType_t SETTLE = pdMS_TO_TICKS(20);
+    const TickType_t MSG_GAP = pdMS_TO_TICKS(3000);
+    const TickType_t WORD_GAP = pdMS_TO_TICKS(1000);
     int64_t press_start = 0;
 
     while (1) {
-        xQueueReceive(button_queue, &evt, portMAX_DELAY);
+        BaseType_t got = xQueueReceive(button_queue, &evt, MSG_GAP);
+        
+        if(got == pdFALSE && msg_len > 0) {
+            ESP_LOGI(TAG, "%s" , "MessageEnd");
+            ESP_LOGI(TAG, "%s" ,message);
 
-        while (xQueueReceive(button_queue, &evt, SETTLE) == pdTRUE) {
-            // still bouncing, drain and keep waiting
+            for(int i = 0; i < MSG_MAX_LEN; ++i) {
+                message[i] = '\0';
+            }
+            msg_len = 0;
+
+            continue;
+
+        } else {
+            while (xQueueReceive(button_queue, &evt, SETTLE) == pdTRUE) {
+                // still bouncing, drain and keep waiting
+            }
         }
+
+
+
 
         int level = gpio_get_level(GPIO_NUM_47);
         if (level != last_reported) {
@@ -101,9 +119,10 @@ void button_task(void *arg) {
                 press_start = esp_timer_get_time();
                 ESP_LOGI(TAG, "%s", "PRESSED");    
             } else {
-                ESP_LOGI(TAG, "%s", "RELEASED");
+
                 int64_t now = esp_timer_get_time();
                 int64_t hold_duration = now - press_start;
+                ESP_LOGI(TAG, "%s", "RELEASED");
 
                 if(msg_len < MSG_MAX_LEN - 1) {
                     if(hold_duration > 300000) {
@@ -112,15 +131,13 @@ void button_task(void *arg) {
                         message[msg_len++] = '.';
                     }
                 } else {
-                    for(int i = 0; i < MSG_MAX_LEN; ++i) {
-                        message[i] = '\0';
-                    }
-                    msg_len = 0;
+                    // for(int i = 0; i < MSG_MAX_LEN; ++i) {
+                    //     message[i] = '\0';
+                    // }
+                    // msg_len = 0;
                     // Force Send Message as we have hit the limit
                 }
-            }
-
-            ESP_LOGI(TAG, "%s" ,message);
+            }            
             
         }
     }
