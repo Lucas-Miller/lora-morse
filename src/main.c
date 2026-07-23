@@ -85,28 +85,35 @@ void button_task(void *arg) {
     const TickType_t SETTLE = pdMS_TO_TICKS(20);
     const TickType_t MSG_GAP = pdMS_TO_TICKS(3000);
     const TickType_t WORD_GAP = pdMS_TO_TICKS(1000);
+    const TickType_t MSG_EXTRA = MSG_GAP - WORD_GAP;
     int64_t press_start = 0;
 
     while (1) {
-        BaseType_t got = xQueueReceive(button_queue, &evt, MSG_GAP);
+        BaseType_t got = xQueueReceive(button_queue, &evt, WORD_GAP);
         
-        if(got == pdFALSE && msg_len > 0) {
-            ESP_LOGI(TAG, "%s" , "MessageEnd");
-            ESP_LOGI(TAG, "%s" ,message);
-
-            for(int i = 0; i < MSG_MAX_LEN; ++i) {
-                message[i] = '\0';
+        if(got == pdFALSE) {
+            if(msg_len > 0 && msg_len < MSG_MAX_LEN - 1) {
+                message[msg_len++] = ' ';
+                message[msg_len] = '\0';                
             }
-            msg_len = 0;
 
-            continue;
+            got = xQueueReceive(button_queue, &evt, MSG_EXTRA); 
+            if(got == pdFALSE && msg_len > 0) {
+                ESP_LOGI(TAG, "%s" , "MessageEnd");
+                ESP_LOGI(TAG, "%s" ,message);
 
-        } else {
-            while (xQueueReceive(button_queue, &evt, SETTLE) == pdTRUE) {
-                // still bouncing, drain and keep waiting
+                for(int i = 0; i < MSG_MAX_LEN; ++i) {
+                    message[i] = '\0';
+                }
+                msg_len = 0;
+
+                continue;
             }
         }
 
+        while (xQueueReceive(button_queue, &evt, SETTLE) == pdTRUE) {
+            // still bouncing, drain and keep waiting
+        }
 
 
 
