@@ -19,12 +19,17 @@ size_t msg_len = 0;
 
 
 QueueHandle_t button_queue;
+QueueHandle_t message_queue;
+
+typedef struct {
+    char text[MSG_MAX_LEN];
+} morse_message_t;
 
 
 static const char *TAG = "main";
 
 gpio_config_t io_conf = {
-    .pin_bit_mask = (1ULL << 35) | (1ULL << 36) | (1ULL << 21),
+    .pin_bit_mask = (1ULL << 35) | (1ULL << 36) | (1ULL << 21) | (1ULL << 48),
     .mode = GPIO_MODE_OUTPUT,
     .pull_up_en = GPIO_PULLUP_DISABLE,
     .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -77,7 +82,17 @@ esp_lcd_panel_dev_config_t panel_config = {
 
 const lvgl_port_cfg_t lvgl_conf = ESP_LVGL_PORT_INIT_CONFIG();
 
+static inline void buzzer_on(void)  { gpio_set_level(GPIO_NUM_48, 0); }
+static inline void buzzer_off(void) { gpio_set_level(GPIO_NUM_48, 1); }
 
+void message_consumer_task(void *arg) {
+    morse_message_t in;
+    while (1) {
+        if (xQueueReceive(message_queue, &in, portMAX_DELAY)) {
+            ESP_LOGI(TAG, "would send: %s", in.text);
+        }
+    }
+}
 
 void button_task(void *arg) {
     int last_reported = 1;
@@ -102,6 +117,15 @@ void button_task(void *arg) {
                 ESP_LOGI(TAG, "%s" , "MessageEnd");
                 ESP_LOGI(TAG, "%s" ,message);
 
+                morse_message_t out;
+
+                strncpy(out.text, message, MSG_MAX_LEN);
+                out.text[MSG_MAX_LEN - 1] = '\0';
+
+                if(xQueueSend(message_queue, &out, 0) != pdTRUE) {
+                    ESP_LOGW(TAG, "Message Queue Is Full, Dropping Message...");
+                }
+
                 for(int i = 0; i < MSG_MAX_LEN; ++i) {
                     message[i] = '\0';
                 }
@@ -124,8 +148,10 @@ void button_task(void *arg) {
 
             if(level == 0) {
                 press_start = esp_timer_get_time();
+                buzzer_on();
                 ESP_LOGI(TAG, "%s", "PRESSED");    
             } else {
+                buzzer_off();
 
                 int64_t now = esp_timer_get_time();
                 int64_t hold_duration = now - press_start;
@@ -161,12 +187,13 @@ void IRAM_ATTR handle_button_press(void *arg) {
 
 void app_main()
 {
-
-
+    message_queue = xQueueCreate(4, sizeof(morse_message_t));
+    xTaskCreate(message_consumer_task, "msg_consumer", 4096, NULL, 5, NULL);
 
     gpio_config(&io_conf);
     
     gpio_config(&button_conf);
+    gpio_set_level(GPIO_NUM_48, 1);
     gpio_install_isr_service(0);
     button_queue = xQueueCreate(10, sizeof(int));
     xTaskCreate(button_task, "button_task", 4096, NULL, 5, NULL);
@@ -225,6 +252,7 @@ void app_main()
 
 
     vTaskDelay(pdMS_TO_TICKS(1000));
+
     
     // int last = 1;
     // while(1) 
