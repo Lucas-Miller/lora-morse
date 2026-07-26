@@ -9,10 +9,31 @@
 #include "esp_lvgl_port.h"
 #include "freertos/queue.h"
 #include "esp_timer.h"
+#include "string.h"
 
+#define OLED_I2C_ADDR 0x3C
+
+const int OLED_I2C_SDA_PIN       = GPIO_NUM_17;
+const int OLED_I2C_SCL_PIN       = GPIO_NUM_18;
+const int OLED_RESET_PIN         = GPIO_NUM_21; // SSD1306 Reset Pin; Pulse LOW then HIGH to reset
+const int ONBOARD_LED_PIN        = GPIO_NUM_35;
+const int DISPLAY_VEXT_POWER_PIN = GPIO_NUM_36; // Display Power Rail; LOW = ON 
+const int BUTTON_GPIO_PIN        = GPIO_NUM_47; // Active LOW (LOW = Sound)
+const int BUZZER_GPIO_PIN        = GPIO_NUM_48;
 
 // LoRa packets can be up to 255 bits so we can limit our msg size to that
 #define MSG_MAX_LEN 256
+
+// Constant MS delay amounts
+#define DOT_MS         150
+#define DASH_MS        (3 * DOT_MS)
+#define SYMBOL_GAP_MS  (1 * DOT_MS)
+#define LETTER_GAP_MS  (2 * DOT_MS)
+#define PRESS_THRESHOLD_MS  (2 * DOT_MS)
+
+// esp_timer_get_time() returns microseconds; the durations above are in ms.
+// Convert ms -> us once at the boundary instead of sprinkling "* 1000" around.
+#define MS_TO_US(ms)  ((int64_t)(ms) * 1000)
 
 char message[MSG_MAX_LEN];
 size_t msg_len = 0;
@@ -46,8 +67,8 @@ gpio_config_t button_conf = {
 
 i2c_master_bus_config_t i2c_conf = {
     .i2c_port = -1,
-    .sda_io_num = 17,
-    .scl_io_num = 18,
+    .sda_io_num = OLED_I2C_SDA_PIN,
+    .scl_io_num = OLED_I2C_SCL_PIN,
     .clk_source = I2C_CLK_SRC_DEFAULT,
     .glitch_ignore_cnt = 7,
     .flags.enable_internal_pullup = true,
@@ -60,7 +81,7 @@ const int LCD_CONTRL_PHASE_BYTES = 1;
 const int LCD_DC_BIT_OFFSET = 6;
 esp_lcd_panel_io_handle_t lcd_io_handle = NULL;
 esp_lcd_panel_io_i2c_config_t lcd_io_conf = {
-    .dev_addr = 0X3C,
+    .dev_addr = OLED_I2C_ADDR,
     .scl_speed_hz = LCD_CLOCK_SPEED_HZ,
     .lcd_cmd_bits = LCD_COMMAND_BIT_WIDTH,
     .lcd_param_bits = LCD_PARAMETER_BIT_WIDTH,
@@ -76,20 +97,45 @@ esp_lcd_panel_ssd1306_config_t ssd1306_config = {
 
 esp_lcd_panel_dev_config_t panel_config = {
     .bits_per_pixel = 1,
-    .reset_gpio_num = GPIO_NUM_21,
+    .reset_gpio_num = OLED_RESET_PIN,
     .vendor_config = &ssd1306_config,
 };
 
 const lvgl_port_cfg_t lvgl_conf = ESP_LVGL_PORT_INIT_CONFIG();
 
-static inline void buzzer_on(void)  { gpio_set_level(GPIO_NUM_48, 0); }
-static inline void buzzer_off(void) { gpio_set_level(GPIO_NUM_48, 1); }
+static inline void buzzer_on(void)  { gpio_set_level(BUZZER_GPIO_PIN, 0); }
+static inline void buzzer_off(void) { gpio_set_level(BUZZER_GPIO_PIN, 1); }
+
+
+static void play_beep(int duration_ms) {
+    buzzer_on();
+    vTaskDelay(pdMS_TO_TICKS(duration_ms));
+    buzzer_off();
+    vTaskDelay(pdMS_TO_TICKS(SYMBOL_GAP_MS));
+}
+
+void play_symbol(char c) {
+    if (c == '.') { play_beep(DOT_MS);}
+    else if (c == '_') { play_beep(DASH_MS); }
+    else if (c == ' ') vTaskDelay(pdMS_TO_TICKS(LETTER_GAP_MS)); // no symbol gap after a letter gap
+}
+
+void play_message(morse_message_t *in) {
+    size_t message_len = strlen(in->text);
+    for(int i = 0; i < message_len; ++i) {
+        play_symbol(in->text[i]);
+    }
+
+    buzzer_off();
+
+}
 
 void message_consumer_task(void *arg) {
     morse_message_t in;
     while (1) {
         if (xQueueReceive(message_queue, &in, portMAX_DELAY)) {
             ESP_LOGI(TAG, "would send: %s", in.text);
+            play_message(&in);
         }
     }
 }
@@ -141,7 +187,7 @@ void button_task(void *arg) {
 
 
 
-        int level = gpio_get_level(GPIO_NUM_47);
+        int level = gpio_get_level(BUTTON_GPIO_PIN);
         if (level != last_reported) {
             last_reported = level;
 
@@ -158,7 +204,7 @@ void button_task(void *arg) {
                 ESP_LOGI(TAG, "%s", "RELEASED");
 
                 if(msg_len < MSG_MAX_LEN - 1) {
-                    if(hold_duration > 300000) {
+                    if(hold_duration > MS_TO_US(PRESS_THRESHOLD_MS)) {
                         message[msg_len++] = '_';
                     } else {
                         message[msg_len++] = '.';
@@ -193,25 +239,25 @@ void app_main()
     gpio_config(&io_conf);
     
     gpio_config(&button_conf);
-    gpio_set_level(GPIO_NUM_48, 1);
+    gpio_set_level(BUZZER_GPIO_PIN, 1);
     gpio_install_isr_service(0);
     button_queue = xQueueCreate(10, sizeof(int));
     xTaskCreate(button_task, "button_task", 4096, NULL, 5, NULL);
-    gpio_isr_handler_add(GPIO_NUM_47, &handle_button_press, NULL);
+    gpio_isr_handler_add(BUTTON_GPIO_PIN, &handle_button_press, NULL);
 
 
 
     // Set up Vext
-    gpio_set_level(GPIO_NUM_36, 0);
-    gpio_set_level(GPIO_NUM_21, 0);
+    gpio_set_level(DISPLAY_VEXT_POWER_PIN, 0);
+    gpio_set_level(OLED_RESET_PIN, 0);
     vTaskDelay(pdMS_TO_TICKS(1000));
-    gpio_set_level(GPIO_NUM_21, 1);
+    gpio_set_level(OLED_RESET_PIN, 1);
     vTaskDelay(pdMS_TO_TICKS(1000));
     
     i2c_master_bus_handle_t bus_handle;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_conf, &bus_handle));
 
-    ESP_ERROR_CHECK(i2c_master_probe(bus_handle, 0x3C, 1000));
+    ESP_ERROR_CHECK(i2c_master_probe(bus_handle, OLED_I2C_ADDR, 1000));
     ESP_LOGI(TAG, "SSD1306 found at 0x3C!");
 
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c(bus_handle, &lcd_io_conf, &lcd_io_handle));
@@ -258,7 +304,7 @@ void app_main()
     // while(1) 
     // {
 
-    //     int now = gpio_get_level(GPIO_NUM_47);
+    //     int now = gpio_get_level(BUTTON_GPIO_PIN);
         
     //     if(now != last) {
     //         ESP_LOGI(TAG, "%s", now == 0 ? "PRESSED" : "RELEASED");
