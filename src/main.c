@@ -10,6 +10,7 @@
 #include "freertos/queue.h"
 #include "esp_timer.h"
 #include "string.h"
+#include "radio.h"
 
 #define OLED_I2C_ADDR 0x3C
 
@@ -233,6 +234,8 @@ void IRAM_ATTR handle_button_press(void *arg) {
 
 void app_main()
 {
+    radio_init();
+    
     message_queue = xQueueCreate(4, sizeof(morse_message_t));
     xTaskCreate(message_consumer_task, "msg_consumer", 4096, NULL, 5, NULL);
 
