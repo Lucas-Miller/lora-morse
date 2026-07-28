@@ -36,10 +36,8 @@ void radio_send(char* message) {
     int state = radio.transmit(message);
 
     if (state != RADIOLIB_ERR_NONE) {
-        ESP_LOGI(TAG, "failed, code %d\n", state);
-        while(true) {
-            hal->delay(1000);
-        }
+        ESP_LOGE(TAG, "Transmit Failed, code %d\n", state);
+        return;
     }
     ESP_LOGI(TAG, "Radio Transmit Succesful!\n");
 }
