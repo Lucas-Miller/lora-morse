@@ -1,2 +1,2 @@
 # lora-morse
-Send and receiving morse code use LORA and an ESP32
+Send and receiving morse code using LoRa and an ESP32
