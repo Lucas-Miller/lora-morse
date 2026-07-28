@@ -6,6 +6,8 @@ extern "C" {
 
 void radio_init(void);
 
+void radio_send(char*);
+
 #ifdef __cplusplus
 }
 #endif

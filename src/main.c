@@ -235,7 +235,8 @@ void IRAM_ATTR handle_button_press(void *arg) {
 void app_main()
 {
     radio_init();
-    
+    radio_send("test");
+
     message_queue = xQueueCreate(4, sizeof(morse_message_t));
     xTaskCreate(message_consumer_task, "msg_consumer", 4096, NULL, 5, NULL);
 
