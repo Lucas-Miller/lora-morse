@@ -231,10 +231,24 @@ void IRAM_ATTR handle_button_press(void *arg) {
     if (hpw) portYIELD_FROM_ISR();
 }
 
+void receive_task(void *arg) {
+    char buf[MSG_MAX_LEN];
+    while (1) {
+        if (radio_read(buf, sizeof(buf))) {
+            ESP_LOGI(TAG, "received: %s", buf);
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+}
+
 
 void app_main()
 {
     radio_init();
+
+    radio_start_receive();
+
+    xTaskCreate(receive_task, "receive_task", 4096, NULL, 5, NULL);
 
     message_queue = xQueueCreate(4, sizeof(morse_message_t));
     xTaskCreate(message_consumer_task, "msg_consumer", 4096, NULL, 5, NULL);
