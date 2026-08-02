@@ -233,9 +233,13 @@ void IRAM_ATTR handle_button_press(void *arg) {
 
 void receive_task(void *arg) {
     char buf[MSG_MAX_LEN];
+    morse_message_t *msg_pointer = (morse_message_t *)buf;
+
+
     while (1) {
         if (radio_read(buf, sizeof(buf))) {
             ESP_LOGI(TAG, "received: %s", buf);
+            play_message(msg_pointer);
         }
         vTaskDelay(pdMS_TO_TICKS(50));
     }
