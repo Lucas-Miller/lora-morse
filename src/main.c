@@ -134,12 +134,28 @@ void play_message(morse_message_t *in) {
 
 }
 
+static lv_obj_t *status_label = NULL;
+
+void set_oled_message(char* msg) {
+    if (status_label == NULL) {
+        return;   // label not created yet, nothing to update
+    }
+    lvgl_port_lock(0);
+    lv_label_set_text(status_label, msg);
+    lvgl_port_unlock();
+}
+
 void message_consumer_task(void *arg) {
     morse_message_t in;
     while (1) {
         if (xQueueReceive(message_queue, &in, portMAX_DELAY)) {
             ESP_LOGI(TAG, "would send: %s", in.text);
+            
+            char line[MSG_MAX_LEN + 32];
+            snprintf(line, sizeof(line), "Sending: %s", in.text);
+            set_oled_message(line);
             radio_send(in.text);
+            set_oled_message("Waiting...");
         }
     }
 }
@@ -213,6 +229,11 @@ void button_task(void *arg) {
                     } else {
                         message[msg_len++] = '.';
                     }
+                    
+                    char line[MSG_MAX_LEN + 32];
+                    snprintf(line, sizeof(line), "Current Input: %s", message);
+                    set_oled_message(line);
+
                 } else {
                     // for(int i = 0; i < MSG_MAX_LEN; ++i) {
                     //     message[i] = '\0';
@@ -232,17 +253,6 @@ void IRAM_ATTR handle_button_press(void *arg) {
     BaseType_t hpw = pdFALSE;
     xQueueSendFromISR(button_queue, &ping, &hpw);
     if (hpw) portYIELD_FROM_ISR();
-}
-
-static lv_obj_t *status_label = NULL;
-
-void set_oled_message(char* msg) {
-    if (status_label == NULL) {
-        return;   // label not created yet, nothing to update
-    }
-    lvgl_port_lock(0);
-    lv_label_set_text(status_label, msg);
-    lvgl_port_unlock();
 }
 
 void receive_task(void *arg) {
