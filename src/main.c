@@ -43,6 +43,8 @@ size_t msg_len = 0;
 QueueHandle_t button_queue;
 QueueHandle_t message_queue;
 
+volatile bool playing = false;
+
 typedef struct {
     char text[MSG_MAX_LEN];
 } morse_message_t;
@@ -153,10 +155,10 @@ void button_task(void *arg) {
     while (1) {
         BaseType_t got = xQueueReceive(button_queue, &evt, WORD_GAP);
         
-        if(got == pdFALSE) {
+        if(got == pdFALSE && !playing) {
             if(msg_len > 0 && msg_len < MSG_MAX_LEN - 1) {
                 message[msg_len++] = ' ';
-                message[msg_len] = '\0';                
+                message[msg_len] = '\0';
             }
 
             got = xQueueReceive(button_queue, &evt, MSG_EXTRA); 
@@ -189,7 +191,7 @@ void button_task(void *arg) {
 
 
         int level = gpio_get_level(BUTTON_GPIO_PIN);
-        if (level != last_reported) {
+        if (level != last_reported && !playing) {
             last_reported = level;
 
 
@@ -239,7 +241,9 @@ void receive_task(void *arg) {
     while (1) {
         if (radio_read(buf, sizeof(buf))) {
             ESP_LOGI(TAG, "received: %s", buf);
+            playing = true;
             play_message(msg_pointer);
+            playing = false;
         }
         vTaskDelay(pdMS_TO_TICKS(50));
     }

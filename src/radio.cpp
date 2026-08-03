@@ -43,10 +43,16 @@ void radio_send(char* message) {
     int state = radio.transmit(message);
 
     if (state != RADIOLIB_ERR_NONE) {
-        ESP_LOGE(TAG, "Transmit Failed, code %d\n", state);
-        return;
+        ESP_LOGE(TAG, "Transmit Failed, code %d", state);
+    } else {
+        ESP_LOGI(TAG, "Radio Transmit Succesful!");
     }
-    ESP_LOGI(TAG, "Radio Transmit Succesful!\n");
+
+    // A finished transmit also pulses DIO1 (TX-done), which fires onReceive()
+    // and FALSELY sets packetReceived and then the next radio_read would replay our
+    // own just-sent message. Clear the flag, then go back to listening.
+    packetReceived = false;
+    radio.startReceive();
 }
 
 void radio_start_receive(void) {
