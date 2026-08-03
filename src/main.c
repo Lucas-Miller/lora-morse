@@ -11,6 +11,7 @@
 #include "esp_timer.h"
 #include "string.h"
 #include "radio.h"
+#include <stdio.h>
 
 #define OLED_I2C_ADDR 0x3C
 
@@ -233,6 +234,17 @@ void IRAM_ATTR handle_button_press(void *arg) {
     if (hpw) portYIELD_FROM_ISR();
 }
 
+static lv_obj_t *status_label = NULL;
+
+void set_oled_message(char* msg) {
+    if (status_label == NULL) {
+        return;   // label not created yet, nothing to update
+    }
+    lvgl_port_lock(0);
+    lv_label_set_text(status_label, msg);
+    lvgl_port_unlock();
+}
+
 void receive_task(void *arg) {
     char buf[MSG_MAX_LEN];
     morse_message_t *msg_pointer = (morse_message_t *)buf;
@@ -240,15 +252,20 @@ void receive_task(void *arg) {
 
     while (1) {
         if (radio_read(buf, sizeof(buf))) {
+            char line[MSG_MAX_LEN + 32];
+            snprintf(line, sizeof(line), "Received: %s", buf);
+            set_oled_message(line);
             ESP_LOGI(TAG, "received: %s", buf);
             playing = true;
+            snprintf(line, sizeof(line), "Playing: %s", buf);
+            set_oled_message(line);
             play_message(msg_pointer);
+            set_oled_message("Waiting...");
             playing = false;
         }
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
-
 
 void app_main()
 {
@@ -315,11 +332,13 @@ void app_main()
     }
     
 
+    // Create the status label once, set_oled_message() will update its text.
     lvgl_port_lock(0);
-    lv_obj_t *label = lv_label_create(lv_screen_active());
-    lv_label_set_text(label, "hello");
-    lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+    status_label = lv_label_create(lv_screen_active());
+    lv_label_set_text(status_label, "Waiting...");
+    lv_obj_align(status_label, LV_ALIGN_CENTER, 0, 0);
     lvgl_port_unlock();
+
 
 
     vTaskDelay(pdMS_TO_TICKS(1000));
